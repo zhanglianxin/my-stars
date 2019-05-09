@@ -60,6 +60,7 @@ Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framew
 | Project Name | Stars | Forks | Language | Description | Last Commit |
 | ------------ | ----- | ----- | -------- | ----------- | ----------- |
 `
+	tmpl = "| [%s](%s) | %d | %d | %s | %s | %s |\n"
 	tail = "\n*Last Update: %v*\n"
 )
 
@@ -76,7 +77,6 @@ func init() {
 	logName := time.Now().Format("2006-01-02") + ".log"
 	file, err := os.OpenFile(logName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if nil != err {
-
 		panic(err)
 	}
 	logrus.SetOutput(file)
@@ -148,7 +148,7 @@ func saveTable(repos []Repo) {
 	}
 	readme.WriteString(head)
 	for i := range repos {
-		line := fmt.Sprintf("| [%s](%s) | %d | %d | %s | %s | %s |\n",
+		line := fmt.Sprintf(tmpl,
 			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description, "-")
 		readme.WriteString(line)
 	}

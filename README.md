@@ -12,13 +12,13 @@ Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framew
 | [kingshard](https://github.com/flike/kingshard) | 4395 | 889 | Go | A high-performance MySQL proxy | - |
 | [news](https://github.com/gocn/news) | 316 | 26 |  | GoCN 每日新闻 | - |
 | [goim](https://github.com/Terry-Mao/goim) | 3180 | 911 | Go | goim | - |
-| [sqlflow](https://github.com/sql-machine-learning/sqlflow) | 1646 | 237 | Go | Brings SQL and AI together. | - |
-| [conference](https://github.com/gopherchina/conference) | 4052 | 898 |  |  | - |
+| [sqlflow](https://github.com/sql-machine-learning/sqlflow) | 1647 | 237 | Go | Brings SQL and AI together. | - |
+| [conference](https://github.com/gopherchina/conference) | 4053 | 898 |  |  | - |
 | [pg](https://github.com/go-pg/pg) | 2646 | 201 | Go | Golang ORM with focus on PostgreSQL features and performance | - |
-| [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) | 8785 | 1620 | JavaScript | 网易云音乐 Node.js API service | - |
+| [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) | 8786 | 1620 | JavaScript | 网易云音乐 Node.js API service | - |
 | [ieaseMusic](https://github.com/trazyn/ieaseMusic) | 6348 | 686 | JavaScript | 网易云音乐第三方 | - |
 | [laravel-file-manager](https://github.com/alexusmai/laravel-file-manager) | 269 | 39 | PHP | File manager for Laravel | - |
-| [support.996.ICU](https://github.com/MSWorkers/support.996.ICU) | 9246 | 710 |  | Microsoft and GitHub Workers Support 996.ICU | - |
+| [support.996.ICU](https://github.com/MSWorkers/support.996.ICU) | 9247 | 710 |  | Microsoft and GitHub Workers Support 996.ICU | - |
 | [annie](https://github.com/iawia002/annie) | 5868 | 481 | Go | 👾 Fast, simple and clean video downloader | - |
 | [Workerman](https://github.com/walkor/Workerman) | 7453 | 1921 | PHP | An asynchronous event driven PHP framework for easily building fast, scalable network applications. Supports HTTP, Websocket, SSL and other custom protocols. Supports libevent, HHVM, ReactPHP. | - |
 | [Docusaurus](https://github.com/facebook/Docusaurus) | 11730 | 1015 | JavaScript | Easy to maintain open source documentation websites. | - |
@@ -40,7 +40,7 @@ Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framew
 | [timingwheel](https://github.com/RussellLuo/timingwheel) | 123 | 16 | Go | Golang implementation of Hierarchical Timing Wheels. | - |
 | [FlameGraph](https://github.com/brendangregg/FlameGraph) | 7734 | 878 | Perl | Stack trace visualizer | - |
 | [share_ppt](https://github.com/rfyiamcool/share_ppt) | 1533 | 258 |  | 🚗  我个人曾经做过的技术分享...  | - |
-| [Hackintosh](https://github.com/daliansky/Hackintosh) | 743 | 81 | Shell | 黑苹果长期维护机型EFI及安装教程整理 | - |
+| [Hackintosh](https://github.com/daliansky/Hackintosh) | 744 | 81 | Shell | 黑苹果长期维护机型EFI及安装教程整理 | - |
 | [0.30000000000000004](https://github.com/erikwiffin/0.30000000000000004) | 609 | 102 | HTML | Floating Point Math Examples | - |
 | [x-patrol](https://github.com/MiSecurity/x-patrol) | 634 | 219 | Go | github泄露扫描系统 | - |
 | [FreshRSS](https://github.com/FreshRSS/FreshRSS) | 1488 | 209 | PHP | A free, self-hostable aggregator… | - |
@@ -55,4 +55,4 @@ Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framew
 | [php-markdown](https://github.com/michelf/php-markdown) | 2929 | 503 | PHP | Parser for Markdown and Markdown Extra derived from the original Markdown.pl by John Gruber. | - |
 | [firebase-php](https://github.com/kreait/firebase-php) | 793 | 193 | PHP | Interact with Google Firebase from your PHP application | - |
 
-*Last Update: 2019-05-09T23:35:51+08:00*
+*Last Update: 2019-05-09T23:43:49+08:00*
