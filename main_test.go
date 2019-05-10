@@ -1,11 +1,11 @@
 package main
 
 import (
-	"testing"
 	"fmt"
 	"net/http"
-	"strings"
 	"net/url"
+	"strings"
+	"testing"
 )
 
 func TestMapKey(t *testing.T) {
@@ -18,7 +18,6 @@ func TestMapKey(t *testing.T) {
 }
 
 func TestGetGists(t *testing.T) {
-	getGists()
 }
 
 func TestMakeRequest(t *testing.T) {
@@ -33,4 +32,11 @@ func TestParseQuery(t *testing.T) {
 	fmt.Println(strings.SplitAfter(q, "?")[1])
 	values, _ := url.ParseQuery(strings.SplitAfter(q, "?")[1])
 	fmt.Println(values)
+}
+func Test(t *testing.T) {
+	params := "page=17&per_page=50"
+	values, err := url.ParseQuery(params)
+	fmt.Printf("%#v, %#v \n", values, err)
+	page := values.Get("page")
+	fmt.Printf("%#v \n", page)
 }

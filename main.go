@@ -1,18 +1,18 @@
 package main
 
 import (
-	"time"
-	"fmt"
-	"os"
-	"github.com/sirupsen/logrus"
-	"github.com/zhanglianxin/my-stars/config"
-	"net/http"
-	"strings"
-	"io/ioutil"
 	"encoding/json"
+	"fmt"
+	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
+	"github.com/zhanglianxin/my-stars/config"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // Repo describes a Github repository with additional field, last commit date
@@ -32,7 +32,7 @@ type Repo struct {
 
 // HeadCommit describes a head commit of default branch
 type HeadCommit struct {
-	Sha string `json:"sha"`
+	Sha    string `json:"sha"`
 	Commit struct {
 		Committer struct {
 			Name  string    `json:"name"`
@@ -43,25 +43,42 @@ type HeadCommit struct {
 }
 
 type Gist struct {
-	Id          int       `json:"id"`
-	Public      bool      `json:"public"`
-	Description string    `json:"description"`
-	URL         string    `json:"html_url"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdateAt    time.Time `json:"updated_at"`
+	Id          string               `json:"id"`
+	Public      bool                 `json:"public"`
+	Description string               `json:"description"`
+	URL         string               `json:"html_url"`
+	CreatedAt   time.Time            `json:"created_at"`
+	UpdateAt    time.Time            `json:"updated_at"`
+	Files       *map[string]GistFile `json:"files"`
+}
+
+type GistFile struct {
+	Filename string `json:"filename"`
+	Type     string `json:"type"`
+	Language string `json:"language"`
+	RawUrl   string `json:"raw_url"`
+	Size     int    `json:"size"`
 }
 
 const (
 	apiHost = "https://api.github.com"
-	head    = `# Get All My Starred Repos
+	head    = `# Get All My Starred Repos and Gists
 
 Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framework-stars).
+`
+	repoHead = `# All My Starred Repos
 
 | Project Name | Stars | Forks | Language | Description | Last Commit |
 | ------------ | ----- | ----- | -------- | ----------- | ----------- |
 `
-	tmpl = "| [%s](%s) | %d | %d | %s | %s | %s |\n"
-	tail = "\n*Last Update: %v*\n"
+	gistHead = `# All My Starred Gists
+
+| Gist Id | Stars | Forks | Description | Last Commit |
+| ------  | ----- | ----- | ----------- | ----------- |
+`
+	repoTmpl = "| [%s](%s) | %d | %d | %s | %s | %s |\n"
+	gistTmpl = "| [%s](%s) | %d | %d | %s | %s |\n"
+	tail     = "\n*Last Update*: %v\n"
 )
 
 var (
@@ -69,8 +86,8 @@ var (
 	headers = map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
-	repos    []Repo
-	lastPage int
+	repos []Repo
+	gists []Gist
 )
 
 func init() {
@@ -87,71 +104,133 @@ func init() {
 }
 
 func main() {
-	getStarred()
-	if len(repos) > 0 {
-		saveTable(repos)
+	getStarredRepos()
+	getStarredGists()
+	saveTable()
+	fmt.Println("--- DONE ---")
+}
+
+func getStarredRepos() {
+	var rs []Repo
+	page, lastPage, perPage := 1, 1, 50
+	path := apiHost + "/user/starred"
+	params := map[string]string{"per_page": strconv.Itoa(perPage)}
+
+	for ; page <= lastPage; page++ {
+		params["page"] = strconv.Itoa(page)
+		res := makeRequest(path, "get", headers, params)
+		// defer res.Body.Close()
+		if http.StatusOK == res.StatusCode {
+			b, _ := ioutil.ReadAll(res.Body)
+			if 1 == lastPage {
+
+				// Get last page
+				lastPage = getLastPage(res)
+			}
+
+			if err := json.Unmarshal(b, &rs); nil != err {
+				logrus.Error("decode gists", err)
+			} else {
+				repos = append(repos, rs...)
+			}
+		}
+		res.Body.Close()
 	}
 }
 
-func getStarred() {
-	path := apiHost + "/user/starred"
-	params := map[string]string{"per_page": "50"}
-	page := 1
-	// for page := 1; page <= lastPage; page++ {
-	params["page"] = strconv.Itoa(page)
-	res := makeRequest(path, "get", headers, params)
-	// defer res.Body.Close() // FIXME possible resource leak
-	if http.StatusOK == res.StatusCode {
-		b, _ := ioutil.ReadAll(res.Body)
-		if 0 == lastPage {
-			links := linkheader.Parse(res.Header.Get("Link"))
-			for _, link := range links {
-				if "last" == link.Rel {
-					params := strings.SplitAfter(link.URL, "?")[1]
-					if "" != params {
-						if values, err := url.ParseQuery(params); nil != err {
-							lastPage, _ = strconv.Atoi(values.Get("page"))
-						}
-					} else {
-						lastPage = 1
-					}
+// Get last page from response header
+func getLastPage(res *http.Response) int {
+	lastPage := 1
+	links := linkheader.Parse(res.Header.Get("Link"))
+	for _, link := range links {
+		if "last" == link.Rel {
+			params := strings.SplitAfter(link.URL, "?")[1]
+			if "" != params {
+				if values, err := url.ParseQuery(params); nil == err {
+					lastPage, _ = strconv.Atoi(values.Get("page"))
 				}
 			}
 		}
-		if err := json.Unmarshal(b, &repos); nil != err {
-			logrus.Error("decode repos", err)
-		}
 	}
-	res.Body.Close()
-	// }
+	return lastPage
 }
 
 func getHeadCommit() {
 	// TODO get last commit date
 }
 
-func getGists() {
-	path := apiHost + "/gists"
-	res := makeRequest(path, "get", headers, nil)
-	defer res.Body.Close()
-	if http.StatusOK == res.StatusCode {
-		b, _ := ioutil.ReadAll(res.Body)
-		result := string(b)
-		fmt.Println(result)
+func getStarredGists() {
+	var gs []Gist
+	page, lastPage, perPage := 1, 1, 50
+	path := apiHost + "/gists/starred"
+	params := map[string]string{"per_page": strconv.Itoa(perPage)}
+
+	for ; page <= lastPage; page++ {
+		params["page"] = strconv.Itoa(page)
+		res := makeRequest(path, "get", headers, params)
+		// defer res.Body.Close()
+		if http.StatusOK == res.StatusCode {
+			b, _ := ioutil.ReadAll(res.Body)
+			if 1 == lastPage {
+				// Get last page
+				lastPage = getLastPage(res)
+			}
+
+			if err := json.Unmarshal(b, &gs); nil != err {
+				logrus.Error("decode gists", err)
+			} else {
+				gists = append(gists, gs...)
+			}
+		}
+		res.Body.Close()
 	}
 }
 
-func saveTable(repos []Repo) {
-	readme, err := os.OpenFile("README.md", os.O_RDWR|os.O_TRUNC, 0666)
+func saveTable() {
+	readme, err := os.OpenFile("README.md", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+	defer readme.Close()
 	if nil != err {
 		panic(err)
 	}
 	readme.WriteString(head)
+
+	saveRepoTable()
+	saveGistTable()
+
+	readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
+}
+
+func saveRepoTable() {
+	readme, err := os.OpenFile("repo/README.md", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+	defer readme.Close()
+	if nil != err {
+		panic(err)
+	}
+	readme.WriteString(repoHead)
+
 	for i := range repos {
-		line := fmt.Sprintf(tmpl,
+		line := fmt.Sprintf(repoTmpl,
 			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description, "-")
 		readme.WriteString(line)
 	}
+
+	readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
+}
+
+func saveGistTable() {
+	readme, err := os.OpenFile("gist/README.md", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+	defer readme.Close()
+	if nil != err {
+		panic(err)
+	}
+	readme.WriteString(gistHead)
+
+	for i := range gists {
+		line := fmt.Sprintf(gistTmpl,
+			gists[i].Id, gists[i].URL, 0, 0, gists[i].Description, gists[i].UpdateAt)
+		readme.WriteString(line)
+	}
+
 	readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
 }
 

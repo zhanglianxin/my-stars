@@ -6,7 +6,7 @@ import (
 
 type UserInfo struct {
 	Username string `toml:"username"`
-	Token string `toml:"token"`
+	Token    string `toml:"token"`
 }
 
 type Config struct {
