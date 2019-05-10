@@ -171,6 +171,7 @@ func getHeadCommit(repo *Repo) {
 	// Get last commit date
 	path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repo.FullName, repo.DefaultBranch)
 	res := makeRequest(path, "get", headers, nil)
+	defer res.Body.Close()
 	if http.StatusOK == res.StatusCode {
 		var commit HeadCommit
 		b, _ := ioutil.ReadAll(res.Body)
