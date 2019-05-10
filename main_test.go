@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"sort"
 )
 
 func TestMapKey(t *testing.T) {
@@ -33,10 +34,12 @@ func TestParseQuery(t *testing.T) {
 	values, _ := url.ParseQuery(strings.SplitAfter(q, "?")[1])
 	fmt.Println(values)
 }
-func Test(t *testing.T) {
-	params := "page=17&per_page=50"
-	values, err := url.ParseQuery(params)
-	fmt.Printf("%#v, %#v \n", values, err)
-	page := values.Get("page")
-	fmt.Printf("%#v \n", page)
+
+func TestSort(t *testing.T) {
+	repos := []string{"abc", "bcd", "bca"}
+	fmt.Println(repos)
+	sort.Slice(repos, func(i, j int) bool {
+		return repos[i] < repos[j]
+	})
+	fmt.Println(repos)
 }

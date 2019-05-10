@@ -13,11 +13,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sort"
 )
 
 // Repo describes a Github repository with additional field, last commit date
 type Repo struct {
 	Name           string    `json:"name"`
+	FullName       string    `json:"full_name"`
 	Description    string    `json:"description"`
 	DefaultBranch  string    `json:"default_branch"`
 	Stars          int       `json:"stargazers_count"`
@@ -32,7 +34,7 @@ type Repo struct {
 
 // HeadCommit describes a head commit of default branch
 type HeadCommit struct {
-	Sha    string `json:"sha"`
+	Sha string `json:"sha"`
 	Commit struct {
 		Committer struct {
 			Name  string    `json:"name"`
@@ -50,6 +52,10 @@ type Gist struct {
 	CreatedAt   time.Time            `json:"created_at"`
 	UpdateAt    time.Time            `json:"updated_at"`
 	Files       *map[string]GistFile `json:"files"`
+	Owner struct {
+		Login string `json:"login"`
+		URL   string `json:"html_url"`
+	} `json:"owner"`
 }
 
 type GistFile struct {
@@ -64,7 +70,11 @@ const (
 	apiHost = "https://api.github.com"
 	head    = `# Get All My Starred Repos and Gists
 
-Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framework-stars).
+> Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framework-stars).
+
+* [my starred repos](repo/README.md)
+
+* [my starred gists](gist/README.md)
 `
 	repoHead = `# All My Starred Repos
 
@@ -73,12 +83,12 @@ Inspired by [go-web-framework-stars](https://github.com/mingrammer/go-web-framew
 `
 	gistHead = `# All My Starred Gists
 
-| Gist Id | Stars | Forks | Description | Last Commit |
-| ------  | ----- | ----- | ----------- | ----------- |
+| Gist Id | Description | Last Commit |
+| ------- | ----------- | ----------- |
 `
 	repoTmpl = "| [%s](%s) | %d | %d | %s | %s | %s |\n"
-	gistTmpl = "| [%s](%s) | %d | %d | %s | %s |\n"
-	tail     = "\n*Last Update*: %v\n"
+	gistTmpl = "| [%s](%s) / [%s](%s) | %s | %s |\n"
+	tail     = "\n**Last Update**: *%v*\n"
 )
 
 var (
@@ -105,6 +115,9 @@ func init() {
 
 func main() {
 	getStarredRepos()
+	sort.Slice(repos, func(i, j int) bool {
+		return repos[i].Language < repos[j].Language
+	})
 	getStarredGists()
 	saveTable()
 	fmt.Println("--- DONE ---")
@@ -123,7 +136,6 @@ func getStarredRepos() {
 		if http.StatusOK == res.StatusCode {
 			b, _ := ioutil.ReadAll(res.Body)
 			if 1 == lastPage {
-
 				// Get last page
 				lastPage = getLastPage(res)
 			}
@@ -155,8 +167,18 @@ func getLastPage(res *http.Response) int {
 	return lastPage
 }
 
-func getHeadCommit() {
-	// TODO get last commit date
+func getHeadCommit(repo *Repo) {
+	// Get last commit date
+	path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repo.FullName, repo.DefaultBranch)
+	res := makeRequest(path, "get", headers, nil)
+	if http.StatusOK == res.StatusCode {
+		var commit HeadCommit
+		b, _ := ioutil.ReadAll(res.Body)
+		if err := json.Unmarshal(b, &commit); nil != err {
+			logrus.Error("decode commit", err)
+		}
+		repo.LastCommitDate = commit.Commit.Committer.Date
+	}
 }
 
 func getStarredGists() {
@@ -209,8 +231,10 @@ func saveRepoTable() {
 	readme.WriteString(repoHead)
 
 	for i := range repos {
+		getHeadCommit(&repos[i])
 		line := fmt.Sprintf(repoTmpl,
-			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description, "-")
+			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description,
+			repos[i].LastCommitDate.Format(time.RFC3339))
 		readme.WriteString(line)
 	}
 
@@ -227,7 +251,8 @@ func saveGistTable() {
 
 	for i := range gists {
 		line := fmt.Sprintf(gistTmpl,
-			gists[i].Id, gists[i].URL, 0, 0, gists[i].Description, gists[i].UpdateAt)
+			gists[i].Owner.Login, gists[i].Owner.URL, gists[i].Id, gists[i].URL,
+			gists[i].Description, gists[i].UpdateAt)
 		readme.WriteString(line)
 	}
 
