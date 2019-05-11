@@ -124,7 +124,6 @@ func main() {
 }
 
 func getStarredRepos() {
-	var rs []Repo
 	page, lastPage, perPage := 1, 1, 50
 	path := apiHost + "/user/starred"
 	params := map[string]string{"per_page": strconv.Itoa(perPage)}
@@ -140,6 +139,7 @@ func getStarredRepos() {
 				lastPage = getLastPage(res)
 			}
 
+			var rs []Repo
 			if err := json.Unmarshal(b, &rs); nil != err {
 				logrus.Error("decode gists", err)
 			} else {
@@ -183,7 +183,6 @@ func getHeadCommit(repo *Repo) {
 }
 
 func getStarredGists() {
-	var gs []Gist
 	page, lastPage, perPage := 1, 1, 50
 	path := apiHost + "/gists/starred"
 	params := map[string]string{"per_page": strconv.Itoa(perPage)}
@@ -199,6 +198,7 @@ func getStarredGists() {
 				lastPage = getLastPage(res)
 			}
 
+			var gs []Gist
 			if err := json.Unmarshal(b, &gs); nil != err {
 				logrus.Error("decode gists", err)
 			} else {
@@ -220,7 +220,7 @@ func saveTable() {
 	saveRepoTable()
 	saveGistTable()
 
-	readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
+	// readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
 }
 
 func saveRepoTable() {
