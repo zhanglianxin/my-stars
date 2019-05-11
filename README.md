@@ -5,5 +5,3 @@
 * [my starred repos](repo/README.md)
 
 * [my starred gists](gist/README.md)
-
-**Last Update**: *2019-05-11T01:10:58+08:00*
