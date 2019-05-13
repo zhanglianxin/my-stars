@@ -192,7 +192,7 @@ func filterNoUpdateInHalfYear(repo *Repo) {
 		if nil != err {
 			panic(err)
 		}
-		readme.WriteString(repo.URL)
+		readme.WriteString(fmt.Sprintln(repo.URL))
 	}
 }
 
