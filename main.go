@@ -179,6 +179,20 @@ func getHeadCommit(repo *Repo) {
 			logrus.Error("decode commit", err)
 		}
 		repo.LastCommitDate = commit.Commit.Committer.Date
+		filterNoUpdateInHalfYear(repo)
+	}
+}
+
+func filterNoUpdateInHalfYear(repo *Repo) {
+	diff := time.Now().Sub(repo.LastCommitDate)
+	halfYear := 180 * 24 * time.Hour
+	if diff > halfYear {
+		readme, err := os.OpenFile("list.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+		defer readme.Close()
+		if nil != err {
+			panic(err)
+		}
+		readme.WriteString(repo.URL)
 	}
 }
 
