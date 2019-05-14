@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"sort"
+	"sync"
 )
 
 // Repo describes a Github repository with additional field, last commit date
@@ -89,12 +90,17 @@ const (
 	repoTmpl = "| [%s](%s) | %d | %d | %s | %s | %s |\n"
 	gistTmpl = "| [%s](%s) / [%s](%s) | %s | %s |\n"
 	tail     = "\n**Last Update**: *%v*\n"
+
+	halfYear = 180 * 24 * time.Hour
 )
 
 var (
 	conf    *config.Config
 	headers = map[string]string{
 		"Accept": "application/vnd.github.v3+json",
+	}
+	params = map[string]string{
+		"per_page": "50",
 	}
 	repos []Repo
 	gists []Gist
@@ -118,17 +124,30 @@ func main() {
 	sort.Slice(repos, func(i, j int) bool {
 		return repos[i].Language < repos[j].Language
 	})
+
+	var wg sync.WaitGroup
+	wg.Add(len(repos))
+
+	for i := range repos {
+		go func() {
+			defer wg.Done()
+			getHeadCommit(&repos[i])
+		}()
+	}
+
 	getStarredGists()
+
+	wg.Wait()
+
 	saveTable()
 	fmt.Println("--- DONE ---")
 }
 
 func getStarredRepos() {
-	page, lastPage, perPage := 1, 1, 50
 	path := apiHost + "/user/starred"
-	params := map[string]string{"per_page": strconv.Itoa(perPage)}
 
-	for ; page <= lastPage; page++ {
+	defer delete(params, "page")
+	for page, lastPage := 1, 1; page <= lastPage; page++ {
 		params["page"] = strconv.Itoa(page)
 		res := makeRequest(path, "get", headers, params)
 		// defer res.Body.Close()
@@ -185,23 +204,22 @@ func getHeadCommit(repo *Repo) {
 
 func filterNoUpdateInHalfYear(repo *Repo) {
 	diff := time.Now().Sub(repo.LastCommitDate)
-	halfYear := 180 * 24 * time.Hour
+
 	if diff > halfYear {
-		readme, err := os.OpenFile("list.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-		defer readme.Close()
+		f, err := os.OpenFile("list.txt", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+		defer f.Close()
 		if nil != err {
 			panic(err)
 		}
-		readme.WriteString(fmt.Sprintln(repo.URL))
+		f.WriteString(fmt.Sprintln(repo.URL, repo.LastCommitDate.Format(time.RFC3339)))
 	}
 }
 
 func getStarredGists() {
-	page, lastPage, perPage := 1, 1, 50
 	path := apiHost + "/gists/starred"
-	params := map[string]string{"per_page": strconv.Itoa(perPage)}
 
-	for ; page <= lastPage; page++ {
+	defer delete(params, "page")
+	for page, lastPage := 1, 1; page <= lastPage; page++ {
 		params["page"] = strconv.Itoa(page)
 		res := makeRequest(path, "get", headers, params)
 		// defer res.Body.Close()
@@ -246,7 +264,7 @@ func saveRepoTable() {
 	readme.WriteString(repoHead)
 
 	for i := range repos {
-		getHeadCommit(&repos[i])
+		// getHeadCommit(&repos[i])
 		line := fmt.Sprintf(repoTmpl,
 			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description,
 			repos[i].LastCommitDate.Format(time.RFC3339))
