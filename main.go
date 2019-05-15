@@ -104,9 +104,11 @@ var (
 	}
 	repos []Repo
 	gists []Gist
+	start time.Time
 )
 
 func init() {
+	start = time.Now()
 	logName := time.Now().Format("2006-01-02") + ".log"
 	file, err := os.OpenFile(logName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if nil != err {
@@ -125,48 +127,41 @@ func main() {
 		return repos[i].Language < repos[j].Language
 	})
 
-	var wg sync.WaitGroup
-	wg.Add(len(repos))
-
-	for i := range repos {
-		go func() {
-			defer wg.Done()
-			getHeadCommit(&repos[i])
-		}()
-	}
-
+	getHeadCommit()
 	getStarredGists()
-
-	wg.Wait()
 
 	saveTable()
 	fmt.Println("--- DONE ---")
+	fmt.Printf("cost: %.3f s\n", time.Now().Sub(start).Seconds())
 }
 
 func getStarredRepos() {
 	path := apiHost + "/user/starred"
 
-	defer delete(params, "page")
-	for page, lastPage := 1, 1; page <= lastPage; page++ {
-		params["page"] = strconv.Itoa(page)
-		res := makeRequest(path, "get", headers, params)
-		// defer res.Body.Close()
-		if http.StatusOK == res.StatusCode {
-			b, _ := ioutil.ReadAll(res.Body)
-			if 1 == lastPage {
-				// Get last page
-				lastPage = getLastPage(res)
-			}
+	res := makeRequest(path, "head", headers, params)
+	lastPage := getLastPage(res)
+	var wg sync.WaitGroup
+	wg.Add(lastPage)
 
-			var rs []Repo
-			if err := json.Unmarshal(b, &rs); nil != err {
-				logrus.Error("decode gists", err)
-			} else {
-				repos = append(repos, rs...)
+	defer delete(params, "page")
+	for page := 1; page <= lastPage; page++ {
+		params["page"] = strconv.Itoa(page)
+		go func(params map[string]string) {
+			defer wg.Done()
+			res := makeRequest(path, "get", headers, params)
+			defer res.Body.Close()
+			if http.StatusOK == res.StatusCode {
+				b, _ := ioutil.ReadAll(res.Body)
+				var rs []Repo
+				if err := json.Unmarshal(b, &rs); nil != err {
+					logrus.Error("decode repos", err)
+				} else {
+					repos = append(repos, rs...)
+				}
 			}
-		}
-		res.Body.Close()
+		}(params)
 	}
+	wg.Wait()
 }
 
 // Get last page from response header
@@ -186,27 +181,43 @@ func getLastPage(res *http.Response) int {
 	return lastPage
 }
 
-func getHeadCommit(repo *Repo) {
-	// Get last commit date
-	path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repo.FullName, repo.DefaultBranch)
-	res := makeRequest(path, "get", headers, nil)
-	defer res.Body.Close()
-	if http.StatusOK == res.StatusCode {
-		var commit HeadCommit
-		b, _ := ioutil.ReadAll(res.Body)
-		if err := json.Unmarshal(b, &commit); nil != err {
-			logrus.Error("decode commit", err)
-		}
-		repo.LastCommitDate = commit.Commit.Committer.Date
-		filterNoUpdateInHalfYear(repo)
-	}
+// Check if has next page
+func hasNextPage(res *http.Response) bool {
+	return len(linkheader.Parse(res.Header.Get("Link")).FilterByRel("next")) > 0
 }
 
-func filterNoUpdateInHalfYear(repo *Repo) {
+func getHeadCommit() {
+	filename := "list.txt"
+	os.Remove(filename)
+
+	var wg sync.WaitGroup
+	wg.Add(len(repos))
+	for i := range repos {
+		// Get last commit date
+		go func(repo *Repo) {
+			defer wg.Done()
+			path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repos[i].FullName, repos[i].DefaultBranch)
+			res := makeRequest(path, "get", headers, nil)
+			defer res.Body.Close()
+			if http.StatusOK == res.StatusCode {
+				var commit HeadCommit
+				b, _ := ioutil.ReadAll(res.Body)
+				if err := json.Unmarshal(b, &commit); nil != err {
+					logrus.Error("decode commit", err)
+				}
+				repo.LastCommitDate = commit.Commit.Committer.Date
+				filterNoUpdateInHalfYear(repo, filename)
+			}
+		}(&repos[i])
+	}
+	wg.Wait()
+}
+
+func filterNoUpdateInHalfYear(repo *Repo, filename string) {
 	diff := time.Now().Sub(repo.LastCommitDate)
 
 	if diff > halfYear {
-		f, err := os.OpenFile("list.txt", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+		f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 		defer f.Close()
 		if nil != err {
 			panic(err)
@@ -218,27 +229,30 @@ func filterNoUpdateInHalfYear(repo *Repo) {
 func getStarredGists() {
 	path := apiHost + "/gists/starred"
 
-	defer delete(params, "page")
-	for page, lastPage := 1, 1; page <= lastPage; page++ {
-		params["page"] = strconv.Itoa(page)
-		res := makeRequest(path, "get", headers, params)
-		// defer res.Body.Close()
-		if http.StatusOK == res.StatusCode {
-			b, _ := ioutil.ReadAll(res.Body)
-			if 1 == lastPage {
-				// Get last page
-				lastPage = getLastPage(res)
-			}
+	res := makeRequest(path, "head", headers, params)
+	lastPage := getLastPage(res)
+	var wg sync.WaitGroup
+	wg.Add(lastPage)
 
-			var gs []Gist
-			if err := json.Unmarshal(b, &gs); nil != err {
-				logrus.Error("decode gists", err)
-			} else {
-				gists = append(gists, gs...)
+	defer delete(params, "page")
+	for page := 1; page <= lastPage; page++ {
+		params["page"] = strconv.Itoa(page)
+		go func(params map[string]string) {
+			defer wg.Done()
+			res := makeRequest(path, "get", headers, params)
+			defer res.Body.Close()
+			if http.StatusOK == res.StatusCode {
+				b, _ := ioutil.ReadAll(res.Body)
+				var gs []Gist
+				if err := json.Unmarshal(b, &gs); nil != err {
+					logrus.Error("decode gists", err)
+				} else {
+					gists = append(gists, gs...)
+				}
 			}
-		}
-		res.Body.Close()
+		}(params)
 	}
+	wg.Wait()
 }
 
 func saveTable() {

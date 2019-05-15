@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"sort"
+	"github.com/tomnomnom/linkheader"
+	"io/ioutil"
 )
 
 func TestMapKey(t *testing.T) {
@@ -16,9 +18,6 @@ func TestMapKey(t *testing.T) {
 	} else {
 		fmt.Printf("else %#v %#v", v, ok) // else "" false
 	}
-}
-
-func TestGetGists(t *testing.T) {
 }
 
 func TestMakeRequest(t *testing.T) {
@@ -42,4 +41,27 @@ func TestSort(t *testing.T) {
 		return repos[i] < repos[j]
 	})
 	fmt.Println(repos)
+}
+
+func TestHasNextPage(t *testing.T) {
+	fmt.Println(headers)
+	res := makeRequest("https://api.github.com/user/starred?page=27", "get", headers, nil)
+	links := linkheader.Parse(res.Header.Get("Link"))
+	fmt.Println(links)
+	l0 := links.FilterByRel("ok")
+	l1 := links.FilterByRel("next")
+	fmt.Println(len(l0), len(l1), l1)
+	if len(l0) > 0 || 1 != len(l1) {
+		t.Error("oops")
+	}
+}
+
+func TestHeadRequest(t *testing.T) {
+	res := makeRequest("https://api.github.com/user/starred?page=27", "head", headers, nil)
+	links := res.Header.Get("Link")
+	fmt.Println(links)
+	b, _ := ioutil.ReadAll(res.Body)
+	if 0 != len(b) {
+		t.Error("body content length error")
+	}
 }
