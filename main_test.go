@@ -65,3 +65,21 @@ func TestHeadRequest(t *testing.T) {
 		t.Error("body content length error")
 	}
 }
+
+func TestHeadRequest1(t *testing.T) {
+	type Person struct {
+		Name string
+		Age  int
+	}
+
+	ps := []Person{{"zhanglianxin", 21}, {"shinn", 19}}
+	fmt.Println(ps)
+	for i := range ps {
+		if 1 == i {
+			func(p *Person) {
+				p.Age = 18
+			}(&ps[i])
+		}
+	}
+	fmt.Println(ps)
+}

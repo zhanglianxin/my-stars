@@ -99,9 +99,6 @@ var (
 	headers = map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
-	params = map[string]string{
-		"per_page": "50",
-	}
 	repos []Repo
 	gists []Gist
 	start time.Time
@@ -126,10 +123,9 @@ func main() {
 	sort.Slice(repos, func(i, j int) bool {
 		return repos[i].Language < repos[j].Language
 	})
-
 	getHeadCommit()
+	filterNoUpdateInHalfYear()
 	getStarredGists()
-
 	saveTable()
 	fmt.Println("--- DONE ---")
 	fmt.Printf("cost: %.3f s\n", time.Now().Sub(start).Seconds())
@@ -137,17 +133,21 @@ func main() {
 
 func getStarredRepos() {
 	path := apiHost + "/user/starred"
-
+	params := map[string]string{
+		"per_page": "50",
+	}
 	res := makeRequest(path, "head", headers, params)
 	lastPage := getLastPage(res)
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
 
-	defer delete(params, "page")
 	for page := 1; page <= lastPage; page++ {
-		params["page"] = strconv.Itoa(page)
-		go func(params map[string]string) {
+		go func(page int, repos *[]Repo) {
 			defer wg.Done()
+			params = map[string]string{
+				"per_page": "50",
+				"page":     strconv.Itoa(page),
+			}
 			res := makeRequest(path, "get", headers, params)
 			defer res.Body.Close()
 			if http.StatusOK == res.StatusCode {
@@ -156,10 +156,10 @@ func getStarredRepos() {
 				if err := json.Unmarshal(b, &rs); nil != err {
 					logrus.Error("decode repos", err)
 				} else {
-					repos = append(repos, rs...)
+					*repos = append(*repos, rs...)
 				}
 			}
-		}(params)
+		}(page, &repos)
 	}
 	wg.Wait()
 }
@@ -187,16 +187,13 @@ func hasNextPage(res *http.Response) bool {
 }
 
 func getHeadCommit() {
-	filename := "list.txt"
-	os.Remove(filename)
-
 	var wg sync.WaitGroup
 	wg.Add(len(repos))
 	for i := range repos {
 		// Get last commit date
 		go func(repo *Repo) {
 			defer wg.Done()
-			path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repos[i].FullName, repos[i].DefaultBranch)
+			path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repo.FullName, repo.DefaultBranch)
 			res := makeRequest(path, "get", headers, nil)
 			defer res.Body.Close()
 			if http.StatusOK == res.StatusCode {
@@ -206,39 +203,46 @@ func getHeadCommit() {
 					logrus.Error("decode commit", err)
 				}
 				repo.LastCommitDate = commit.Commit.Committer.Date
-				filterNoUpdateInHalfYear(repo, filename)
 			}
 		}(&repos[i])
 	}
 	wg.Wait()
 }
 
-func filterNoUpdateInHalfYear(repo *Repo, filename string) {
-	diff := time.Now().Sub(repo.LastCommitDate)
-
-	if diff > halfYear {
-		f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-		defer f.Close()
-		if nil != err {
-			panic(err)
-		}
-		f.WriteString(fmt.Sprintln(repo.URL, repo.LastCommitDate.Format(time.RFC3339)))
+func filterNoUpdateInHalfYear() {
+	f, err := os.OpenFile("list.txt", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+	defer f.Close()
+	if nil != err {
+		panic(err)
 	}
+
+	now := time.Now()
+	for i := range repos {
+		diff := now.Sub(repos[i].LastCommitDate)
+		if diff > halfYear {
+			f.WriteString(fmt.Sprintln(repos[i].URL, repos[i].LastCommitDate.Format(time.RFC3339)))
+		}
+	}
+
 }
 
 func getStarredGists() {
 	path := apiHost + "/gists/starred"
-
+	params := map[string]string{
+		"per_page": "50",
+	}
 	res := makeRequest(path, "head", headers, params)
 	lastPage := getLastPage(res)
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
 
-	defer delete(params, "page")
 	for page := 1; page <= lastPage; page++ {
-		params["page"] = strconv.Itoa(page)
 		go func(params map[string]string) {
 			defer wg.Done()
+			params = map[string]string{
+				"per_page": "50",
+				"page":     strconv.Itoa(page),
+			}
 			res := makeRequest(path, "get", headers, params)
 			defer res.Body.Close()
 			if http.StatusOK == res.StatusCode {
@@ -265,8 +269,6 @@ func saveTable() {
 
 	saveRepoTable()
 	saveGistTable()
-
-	// readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
 }
 
 func saveRepoTable() {
@@ -278,7 +280,6 @@ func saveRepoTable() {
 	readme.WriteString(repoHead)
 
 	for i := range repos {
-		// getHeadCommit(&repos[i])
 		line := fmt.Sprintf(repoTmpl,
 			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description,
 			repos[i].LastCommitDate.Format(time.RFC3339))
