@@ -2,13 +2,18 @@ package main
 
 import (
 	"fmt"
+	"github.com/tomnomnom/linkheader"
+	"github.com/zhanglianxin/my-stars/rate"
+	"github.com/zhanglianxin/my-stars/req"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
-	"testing"
 	"sort"
-	"github.com/tomnomnom/linkheader"
-	"io/ioutil"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
 )
 
 func TestMapKey(t *testing.T) {
@@ -21,7 +26,7 @@ func TestMapKey(t *testing.T) {
 }
 
 func TestMakeRequest(t *testing.T) {
-	res := makeRequest("https://coolman.site", "get", nil, nil)
+	res := req.MakeRequest("https://coolman.site", "get", nil, nil)
 	if http.StatusOK != res.StatusCode {
 		t.Error("oops!!", res.StatusCode)
 	}
@@ -45,7 +50,7 @@ func TestSort(t *testing.T) {
 
 func TestHasNextPage(t *testing.T) {
 	fmt.Println(headers)
-	res := makeRequest("https://api.github.com/user/starred?page=27", "get", headers, nil)
+	res := req.MakeRequest("https://api.github.com/user/starred?page=27", "get", headers, nil)
 	links := linkheader.Parse(res.Header.Get("Link"))
 	fmt.Println(links)
 	l0 := links.FilterByRel("ok")
@@ -57,7 +62,7 @@ func TestHasNextPage(t *testing.T) {
 }
 
 func TestHeadRequest(t *testing.T) {
-	res := makeRequest("https://api.github.com/user/starred?page=27", "head", headers, nil)
+	res := req.MakeRequest("https://api.github.com/user/starred?page=27", "head", headers, nil)
 	links := res.Header.Get("Link")
 	fmt.Println(links)
 	b, _ := ioutil.ReadAll(res.Body)
@@ -72,14 +77,27 @@ func TestHeadRequest1(t *testing.T) {
 		Age  int
 	}
 
-	ps := []Person{{"zhanglianxin", 21}, {"shinn", 19}}
+	var ps []Person
+	for i := 0; i < 999; i++ {
+		ps = append(ps, Person{"zhanglianxin", i})
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(ps))
 	fmt.Println(ps)
 	for i := range ps {
-		if 1 == i {
-			func(p *Person) {
-				p.Age = 18
-			}(&ps[i])
-		}
+		go func(p *Person) {
+			defer wg.Done()
+			time.Sleep(500 * time.Millisecond)
+			p.Name = strconv.Itoa(1)
+		}(&ps[i])
 	}
+	wg.Wait()
+
 	fmt.Println(ps)
+}
+
+func TestResource(t *testing.T) {
+	r := &rate.Rate{5000, 0, 1557993978}
+	fmt.Println(r, time.Unix(r.Reset, 0))
 }

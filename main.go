@@ -6,66 +6,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
 	"github.com/zhanglianxin/my-stars/config"
+	"github.com/zhanglianxin/my-stars/gist"
+	"github.com/zhanglianxin/my-stars/rate"
+	"github.com/zhanglianxin/my-stars/repo"
+	"github.com/zhanglianxin/my-stars/req"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
-	"time"
-	"sort"
 	"sync"
+	"time"
 )
-
-// Repo describes a Github repository with additional field, last commit date
-type Repo struct {
-	Name           string    `json:"name"`
-	FullName       string    `json:"full_name"`
-	Description    string    `json:"description"`
-	DefaultBranch  string    `json:"default_branch"`
-	Stars          int       `json:"stargazers_count"`
-	Forks          int       `json:"forks_count"`
-	Issues         int       `json:"open_issues_count"`
-	Created        time.Time `json:"created_at"`
-	Updated        time.Time `json:"updated_at"`
-	URL            string    `json:"html_url"`
-	Language       string    `json:"language"`
-	LastCommitDate time.Time `json:"-"`
-}
-
-// HeadCommit describes a head commit of default branch
-type HeadCommit struct {
-	Sha string `json:"sha"`
-	Commit struct {
-		Committer struct {
-			Name  string    `json:"name"`
-			Email string    `json:"email"`
-			Date  time.Time `json:"date"`
-		} `json:"committer"`
-	} `json:"commit"`
-}
-
-type Gist struct {
-	Id          string               `json:"id"`
-	Public      bool                 `json:"public"`
-	Description string               `json:"description"`
-	URL         string               `json:"html_url"`
-	CreatedAt   time.Time            `json:"created_at"`
-	UpdateAt    time.Time            `json:"updated_at"`
-	Files       *map[string]GistFile `json:"files"`
-	Owner struct {
-		Login string `json:"login"`
-		URL   string `json:"html_url"`
-	} `json:"owner"`
-}
-
-type GistFile struct {
-	Filename string `json:"filename"`
-	Type     string `json:"type"`
-	Language string `json:"language"`
-	RawUrl   string `json:"raw_url"`
-	Size     int    `json:"size"`
-}
 
 const (
 	apiHost = "https://api.github.com"
@@ -99,19 +53,24 @@ var (
 	headers = map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
-	repos []Repo
-	gists []Gist
+	repos []repo.Repo
+	gists []gist.Gist
 	start time.Time
 )
 
 func init() {
 	start = time.Now()
+
 	logName := time.Now().Format("2006-01-02") + ".log"
 	file, err := os.OpenFile(logName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if nil != err {
 		panic(err)
 	}
+	logrus.SetFormatter(&logrus.TextFormatter{
+		DisableColors: true,
+	})
 	logrus.SetOutput(file)
+
 	conf = config.Load("config.toml")
 	if _, ok := headers["Authorization"]; !ok {
 		headers["Authorization"] = fmt.Sprintf("token %s", conf.User.Token)
@@ -119,11 +78,18 @@ func init() {
 }
 
 func main() {
+	if !rate.NewLimit().HasRemaining() {
+		panic("current token has no remaining times")
+	}
+
 	getStarredRepos()
 	sort.Slice(repos, func(i, j int) bool {
 		return repos[i].Language < repos[j].Language
 	})
 	getHeadCommit()
+	for i := range repos {
+		fmt.Println(repos[i].LastCommitDate)
+	}
 	filterNoUpdateInHalfYear()
 	getStarredGists()
 	saveTable()
@@ -136,25 +102,25 @@ func getStarredRepos() {
 	params := map[string]string{
 		"per_page": "50",
 	}
-	res := makeRequest(path, "head", headers, params)
+	res := req.MakeRequest(path, "head", headers, params)
 	lastPage := getLastPage(res)
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
 
 	for page := 1; page <= lastPage; page++ {
-		go func(page int, repos *[]Repo) {
+		go func(page int, repos *[]repo.Repo) {
 			defer wg.Done()
 			params = map[string]string{
 				"per_page": "50",
 				"page":     strconv.Itoa(page),
 			}
-			res := makeRequest(path, "get", headers, params)
+			res := req.MakeRequest(path, "get", headers, params)
 			defer res.Body.Close()
 			if http.StatusOK == res.StatusCode {
 				b, _ := ioutil.ReadAll(res.Body)
-				var rs []Repo
+				var rs []repo.Repo
 				if err := json.Unmarshal(b, &rs); nil != err {
-					logrus.Error("decode repos", err)
+					logrus.Errorf("decode repos: %s", err)
 				} else {
 					*repos = append(*repos, rs...)
 				}
@@ -191,18 +157,26 @@ func getHeadCommit() {
 	wg.Add(len(repos))
 	for i := range repos {
 		// Get last commit date
-		go func(repo *Repo) {
+		go func(rp *repo.Repo) {
 			defer wg.Done()
-			path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, repo.FullName, repo.DefaultBranch)
-			res := makeRequest(path, "get", headers, nil)
+			path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, rp.FullName, rp.DefaultBranch)
+			res := req.MakeRequest(path, "get", headers, nil)
 			defer res.Body.Close()
-			if http.StatusOK == res.StatusCode {
-				var commit HeadCommit
+			switch res.StatusCode {
+			case http.StatusOK:
+				var commit repo.HeadCommit
 				b, _ := ioutil.ReadAll(res.Body)
 				if err := json.Unmarshal(b, &commit); nil != err {
-					logrus.Error("decode commit", err)
+					logrus.Errorf("decode commit: %s", err)
 				}
-				repo.LastCommitDate = commit.Commit.Committer.Date
+				rp.LastCommitDate = commit.Commit.Committer.Date
+			case http.StatusNotFound:
+				logrus.Infof("%s: %s", res.Status, rp.URL)
+			case http.StatusForbidden: // 403
+				logrus.Infof("%s: %s", res.Status, rp.URL)
+				// TODO retry
+			default:
+				logrus.Infof("%s: %s", res.Status, rp.URL)
 			}
 		}(&repos[i])
 	}
@@ -218,6 +192,9 @@ func filterNoUpdateInHalfYear() {
 
 	now := time.Now()
 	for i := range repos {
+		if "0001-01-01T00:00:00Z" == repos[i].LastCommitDate.String() {
+			continue
+		}
 		diff := now.Sub(repos[i].LastCommitDate)
 		if diff > halfYear {
 			f.WriteString(fmt.Sprintln(repos[i].URL, repos[i].LastCommitDate.Format(time.RFC3339)))
@@ -231,7 +208,7 @@ func getStarredGists() {
 	params := map[string]string{
 		"per_page": "50",
 	}
-	res := makeRequest(path, "head", headers, params)
+	res := req.MakeRequest(path, "head", headers, params)
 	lastPage := getLastPage(res)
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
@@ -243,13 +220,13 @@ func getStarredGists() {
 				"per_page": "50",
 				"page":     strconv.Itoa(page),
 			}
-			res := makeRequest(path, "get", headers, params)
+			res := req.MakeRequest(path, "get", headers, params)
 			defer res.Body.Close()
 			if http.StatusOK == res.StatusCode {
 				b, _ := ioutil.ReadAll(res.Body)
-				var gs []Gist
+				var gs []gist.Gist
 				if err := json.Unmarshal(b, &gs); nil != err {
-					logrus.Error("decode gists", err)
+					logrus.Errorf("decode gists: %s", err)
 				} else {
 					gists = append(gists, gs...)
 				}
@@ -305,27 +282,4 @@ func saveGistTable() {
 	}
 
 	readme.WriteString(fmt.Sprintf(tail, time.Now().Format(time.RFC3339)))
-}
-
-func makeRequest(url string, method string, headers map[string]string, params map[string]string) *http.Response {
-	method = strings.ToUpper(method)
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
-	if nil != err {
-		panic(err)
-	}
-	for key := range headers {
-		req.Header.Add(key, headers[key])
-	}
-	q := req.URL.Query()
-	for key := range params {
-		q.Add(key, params[key])
-	}
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := client.Do(req)
-	if nil != err {
-		panic(err)
-	}
-	return resp
 }
