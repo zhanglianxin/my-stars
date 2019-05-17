@@ -4,22 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/sirupsen/logrus"
-	"github.com/tomnomnom/linkheader"
-	"github.com/zhanglianxin/my-stars/config"
 	"github.com/zhanglianxin/my-stars/gist"
 	"github.com/zhanglianxin/my-stars/rate"
 	"github.com/zhanglianxin/my-stars/repo"
 	"github.com/zhanglianxin/my-stars/req"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-	"sort"
 	"math/rand"
+	"os"
+	"sort"
+	"time"
 )
 
 const (
@@ -34,7 +26,7 @@ const (
 `
 	repoHead = `# All My Starred Repos
 
-| Project Name | Stars | Forks | Language | Description | Last Commit |
+| Project Name | Stars | Forks | Language | Description | Last Push |
 | ------------ | ----- | ----- | -------- | ----------- | ----------- |
 `
 	gistHead = `# All My Starred Gists
@@ -50,13 +42,10 @@ const (
 )
 
 var (
-	conf    *config.Config
-	headers = map[string]string{
-		"Accept": "application/vnd.github.v3+json",
-	}
-	repos []repo.Repo
-	gists []gist.Gist
-	start time.Time
+	headers = req.Headers
+	repos   []repo.Repo
+	gists   []gist.Gist
+	start   time.Time
 )
 
 func init() {
@@ -73,8 +62,6 @@ func init() {
 	})
 	logrus.SetOutput(file)
 
-	conf = config.Load("config.toml")
-
 	for _, name := range []string{"list.txt", "repo/README.md", "gist/README.md"} {
 		os.Remove(name)
 	}
@@ -90,17 +77,6 @@ func main() {
 		return repos[i].Language < repos[j].Language
 	})
 
-	var wg sync.WaitGroup
-	wg.Add(len(repos))
-	for i := range repos {
-		go func(i int) {
-			defer wg.Done()
-			var retryTimes int
-			getHeadCommit(&repos[i], retryTimes, i)
-		}(i)
-	}
-	wg.Wait()
-
 	filterNoUpdateInHalfYear()
 	getStarredGists()
 	saveTable()
@@ -110,95 +86,12 @@ func main() {
 
 func getStarredRepos() {
 	path := apiHost + "/user/starred"
-	if _, ok := headers["Authorization"]; !ok {
-		headers["Authorization"] = fmt.Sprintf("token %s", conf.User.Token)
-	}
-	params := map[string]string{
-		"per_page": "50",
-	}
-	res := req.MakeRequest(path, "head", headers, params)
-	lastPage := getLastPage(res)
-	var wg sync.WaitGroup
-	wg.Add(lastPage)
-
-	for page := 1; page <= lastPage; page++ {
-		go func(page int, repos *[]repo.Repo) {
-			defer wg.Done()
-			params := map[string]string{
-				"per_page": "50",
-				"page":     strconv.Itoa(page),
-			}
-			res := req.MakeRequest(path, "get", headers, params)
-			defer res.Body.Close()
-			if http.StatusOK == res.StatusCode {
-				b, _ := ioutil.ReadAll(res.Body)
-				var rs []repo.Repo
-				if err := json.Unmarshal(b, &rs); nil != err {
-					logrus.Errorf("[getStarredRepos] decode repos: %s", err)
-				} else {
-					*repos = append(*repos, rs...)
-				}
-			} else {
-				logrus.Infof("[getStarredRepos] %s: %s", res.Status, path)
-			}
-		}(page, &repos)
-	}
-	wg.Wait()
-}
-
-// Get last page from response header
-func getLastPage(res *http.Response) int {
-	lastPage := 1
-	links := linkheader.Parse(res.Header.Get("Link"))
-	for _, link := range links {
-		if "last" == link.Rel {
-			params := strings.SplitAfter(link.URL, "?")[1]
-			if "" != params {
-				if values, err := url.ParseQuery(params); nil == err {
-					lastPage, _ = strconv.Atoi(values.Get("page"))
-				}
-			}
+	rp := repo.NewRepo()
+	if b, e := rp.GetAll(path); nil == e {
+		if err := json.Unmarshal(b, &repos); err != nil {
+			panic(err)
 		}
 	}
-	return lastPage
-}
-
-// Check if has next page
-func hasNextPage(res *http.Response) bool {
-	return len(linkheader.Parse(res.Header.Get("Link")).FilterByRel("next")) > 0
-}
-
-func getHeadCommit(rp *repo.Repo, retryTimes int, i int) {
-	if _, ok := headers["Authorization"]; !ok {
-		headers["Authorization"] = fmt.Sprintf("token %s", conf.User.Token)
-	}
-	// Get last commit date
-	path := fmt.Sprintf("%s/repos/%s/commits/%s", apiHost, rp.FullName, rp.DefaultBranch)
-	res := req.MakeRequest(path, "get", headers, nil)
-	defer res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusOK:
-		var commit repo.HeadCommit
-		b, _ := ioutil.ReadAll(res.Body)
-		if err := json.Unmarshal(b, &commit); nil != err {
-			logrus.Errorf("[getHeadCommit] decode commit: %s", err)
-		}
-		rp.LastCommitDate = commit.Commit.Committer.Date
-	case http.StatusNotFound:
-		logrus.Infof("[getHeadCommit] %s: %s", res.Status, rp.URL)
-		repos = append(repos[:i], repos[i+1:]...)
-	case http.StatusForbidden: // 403
-		// retry
-		if retryTimes < 8 {
-			retryTimes++
-			time.Sleep(time.Duration(100*retryTimes) * time.Microsecond)
-			logrus.Infof("[getHeadCommit] retry: %s, %d", rp.URL, retryTimes)
-			getHeadCommit(rp, retryTimes, i)
-		}
-	default:
-		logrus.Infof("%s: %s", res.Status, rp.URL)
-	}
-
 }
 
 func filterNoUpdateInHalfYear() {
@@ -210,50 +103,21 @@ func filterNoUpdateInHalfYear() {
 
 	now := time.Now()
 	for i := range repos {
-		diff := now.Sub(repos[i].LastCommitDate)
+		diff := now.Sub(repos[i].Pushed)
 		if diff > halfYear {
-			f.WriteString(fmt.Sprintln(repos[i].URL, repos[i].LastCommitDate.Format(time.RFC3339)))
+			f.WriteString(fmt.Sprintln(repos[i].URL, repos[i].Pushed.Format(time.RFC3339)))
 		}
 	}
-
 }
 
 func getStarredGists() {
 	path := apiHost + "/gists/starred"
-	if _, ok := headers["Authorization"]; !ok {
-		headers["Authorization"] = fmt.Sprintf("token %s", conf.User.Token)
+	g := gist.NewGist()
+	if b, e := g.GetAll(path); nil == e {
+		if err := json.Unmarshal(b, &gists); err != nil {
+			panic(err)
+		}
 	}
-	params := map[string]string{
-		"per_page": "50",
-	}
-	res := req.MakeRequest(path, "head", headers, params)
-	lastPage := getLastPage(res)
-	var wg sync.WaitGroup
-	wg.Add(lastPage)
-
-	for page := 1; page <= lastPage; page++ {
-		go func(page int) {
-			defer wg.Done()
-			params := map[string]string{
-				"per_page": "50",
-				"page":     strconv.Itoa(page),
-			}
-			res := req.MakeRequest(path, "get", headers, params)
-			defer res.Body.Close()
-			if http.StatusOK == res.StatusCode {
-				b, _ := ioutil.ReadAll(res.Body)
-				var gs []gist.Gist
-				if err := json.Unmarshal(b, &gs); nil != err {
-					logrus.Errorf("[getStarredGists] decode gists: %s", err)
-				} else {
-					gists = append(gists, gs...)
-				}
-			} else {
-				logrus.Infof("[getStarredGists] %s: %s", res.Status, path)
-			}
-		}(page)
-	}
-	wg.Wait()
 }
 
 func saveTable() {
@@ -279,7 +143,7 @@ func saveRepoTable() {
 	for i := range repos {
 		line := fmt.Sprintf(repoTmpl,
 			repos[i].Name, repos[i].URL, repos[i].Stars, repos[i].Forks, repos[i].Language, repos[i].Description,
-			repos[i].LastCommitDate.Format(time.RFC3339))
+			repos[i].Pushed.Format(time.RFC3339))
 		readme.WriteString(line)
 	}
 

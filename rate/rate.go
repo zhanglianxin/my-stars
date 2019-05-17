@@ -6,11 +6,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/zhanglianxin/my-stars/config"
 	"github.com/zhanglianxin/my-stars/req"
-	"io/ioutil"
 	"net/http"
 )
 
-const ApiHost = "https://api.github.com/"
+const apiHost = "https://api.github.com/"
 
 type Rate struct {
 	Limit     int   `json:"limit"`
@@ -35,7 +34,7 @@ var (
 	headers = map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
-	path = ApiHost + "rate_limit"
+	path = apiHost + "rate_limit"
 )
 
 func init() {
@@ -49,8 +48,8 @@ func NewLimit() (limit *Limit) {
 	res := req.MakeRequest(path, "get", headers, nil)
 	defer res.Body.Close()
 	if http.StatusOK == res.StatusCode {
-		b, _ := ioutil.ReadAll(res.Body)
-		if err := json.Unmarshal(b, &limit); nil != err {
+		decoder := json.NewDecoder(res.Body)
+		if err := decoder.Decode(&limit); nil != err {
 			logrus.Errorf("decode limit: %s", err)
 		}
 	}
