@@ -83,12 +83,15 @@ func (rp *Repo) GetAll(path string) ([]byte, error) {
 	pageSize := 50
 	lastPage := rp.GetLastPage(path, pageSize)
 
+	var mutex sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
 
 	for page := 1; page <= lastPage; page++ {
 		go func(page int) {
 			defer wg.Done()
+			mutex.Lock()
+			defer mutex.Unlock()
 			if b, e := rp.GetPagedData(path, pageSize, page); nil == e {
 				var rs []Repo
 				json.Unmarshal(b, &rs)

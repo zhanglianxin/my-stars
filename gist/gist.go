@@ -66,12 +66,15 @@ func (g *Gist) GetAll(path string) ([]byte, error) {
 	pageSize := 10
 	lastPage := g.GetLastPage(path, pageSize)
 
+	var mutex sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(lastPage)
 
 	for page := 1; page <= lastPage; page++ {
 		go func(page int) {
 			defer wg.Done()
+			mutex.Lock()
+			defer mutex.Unlock()
 			if b, e := g.GetPagedData(path, pageSize, page); nil == e {
 				var gs []Gist
 				json.Unmarshal(b, &gs)
