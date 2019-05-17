@@ -31,10 +31,15 @@ func MakeRequest(urlStr string, method string, headers map[string]string, params
 	}
 
 	// check rate limit
-	remaining, _ := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
-	reset, _ := strconv.Atoi(resp.Header.Get("X-RateLimit-Reset"))
-	if 0 == remaining {
-		logrus.Info("123", resp.Header.Get("X-RateLimit-Remaining"), resp.Header.Get("X-RateLimit-Reset"))
+	remainingStr := resp.Header.Get("X-RateLimit-Remaining")
+	resetStr := resp.Header.Get("X-RateLimit-Reset")
+	remaining, _ := strconv.Atoi(remainingStr)
+	reset, _ := strconv.Atoi(resetStr)
+	if "" != remainingStr && "" != resetStr && 0 == remaining {
+		logrus.Infof("url: %s, method: %s, headers: %v, params: %v, original: %s, %s, parsed: %d, %d",
+			urlStr, method, headers, params,
+			resp.Header.Get("X-RateLimit-Remaining"), resp.Header.Get("X-RateLimit-Reset"),
+			remaining, reset)
 		panic(fmt.Sprintf("Reach to rate limit, please wait until %s",
 			time.Unix(int64(reset), 0).Format(time.RFC3339)))
 	}

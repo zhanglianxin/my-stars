@@ -100,4 +100,10 @@ func TestHeadRequest1(t *testing.T) {
 func TestResource(t *testing.T) {
 	r := &rate.Rate{5000, 0, 1557993978}
 	fmt.Println(r, time.Unix(r.Reset, 0))
+
+	m := map[string]int{"name": 1, "aha": 2}
+	for i := range m {
+		delete(m, i)
+	}
+	fmt.Println(m)
 }
