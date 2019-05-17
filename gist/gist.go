@@ -62,7 +62,6 @@ func (g *Gist) GetPagedData(path string, pageSize int, page int) ([]byte, error)
 
 func (g *Gist) GetAll(path string) ([]byte, error) {
 	var gists []Gist
-	var err error
 
 	pageSize := 10
 	lastPage := g.GetLastPage(path, pageSize)
@@ -77,9 +76,6 @@ func (g *Gist) GetAll(path string) ([]byte, error) {
 				var gs []Gist
 				json.Unmarshal(b, &gs)
 				gists = append(gists, gs...)
-			} else {
-				err = e
-				return
 			}
 		}(page)
 		time.Sleep(100 * time.Millisecond)

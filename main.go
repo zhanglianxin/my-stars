@@ -61,15 +61,15 @@ func init() {
 		DisableColors: true,
 	})
 	logrus.SetOutput(file)
-
-	for _, name := range []string{"list.txt", "repo/README.md", "gist/README.md"} {
-		os.Remove(name)
-	}
 }
 
 func main() {
 	if !rate.NewLimit().HasRemaining() {
 		panic("current token has no remaining times")
+	}
+
+	for _, name := range []string{"list.txt", "repo/README.md", "gist/README.md"} {
+		os.Remove(name)
 	}
 
 	getStarredRepos()

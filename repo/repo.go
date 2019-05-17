@@ -79,7 +79,6 @@ func (rp *Repo) GetPagedData(path string, pageSize int, page int) ([]byte, error
 
 func (rp *Repo) GetAll(path string) ([]byte, error) {
 	var repos []Repo
-	var err error
 
 	pageSize := 50
 	lastPage := rp.GetLastPage(path, pageSize)
@@ -94,9 +93,6 @@ func (rp *Repo) GetAll(path string) ([]byte, error) {
 				var rs []Repo
 				json.Unmarshal(b, &rs)
 				repos = append(repos, rs...)
-			} else {
-				err = e
-				return
 			}
 		}(page)
 		time.Sleep(100 * time.Millisecond)
